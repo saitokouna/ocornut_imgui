@@ -2664,8 +2664,12 @@ void ImGui::RenderFrame(ImVec2 p_min, ImVec2 p_max, ImU32 fill_col, bool border,
     const float border_size = g.Style.FrameBorderSize;
     if (border && border_size > 0.0f)
     {
+#ifdef WIN98
+        WinAddRect(p_min, p_max, true);
+#else
         window->DrawList->AddRect(p_min + ImVec2(1, 1), p_max + ImVec2(1, 1), GetColorU32(ImGuiCol_BorderShadow), rounding, ImDrawCornerFlags_All, border_size);
         window->DrawList->AddRect(p_min, p_max, GetColorU32(ImGuiCol_Border), rounding, ImDrawCornerFlags_All, border_size);
+#endif
     }
 }
 
@@ -5165,11 +5169,57 @@ static inline void ClampWindowRect(ImGuiWindow* window, const ImRect& visibility
     window->Pos = ImClamp(window->Pos, visibility_rect.Min - size_for_clamping, visibility_rect.Max);
 }
 
+void ImGui::WinAddRect(const ImVec2& min, const ImVec2& max, bool inset)
+{
+    ImU32 top_left = IM_COL32(255,255,255,255);
+    ImU32 bottom_right = IM_COL32(0,0,0,255);
+    ImU32 top_left_inner = IM_COL32(223,223,223,255);
+    ImU32 bottom_right_inner = IM_COL32(128,128,128,255);
+
+    if (inset) {
+        ImU32 tmp = top_left; top_left = bottom_right; bottom_right = tmp;
+        tmp = top_left_inner; top_left_inner = bottom_right_inner; bottom_right_inner = tmp;
+    }
+
+    // ImU32 fill_col = IM_COL32(192,192,192,255);
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 a = min + ImVec2(0.5f, 0.5f);
+    ImVec2 b = max - ImVec2(0.5f, 0.5f);
+
+    draw_list->PathLineTo(ImVec2(a.x, b.y));
+    draw_list->PathLineTo(a);
+    draw_list->PathLineTo(ImVec2(b.x, a.y));
+    draw_list->PathStroke(top_left, false, 1.0f);
+
+    draw_list->PathLineTo(ImVec2(a.x, b.y));
+    draw_list->PathLineTo(b);
+    draw_list->PathLineTo(ImVec2(b.x, a.y));
+    draw_list->PathStroke(bottom_right, false, 1.0f);
+
+
+    draw_list->PathLineTo(ImVec2(a.x, b.y) + ImVec2(1, -1));
+    draw_list->PathLineTo(a + ImVec2(1, 1));
+    draw_list->PathLineTo(ImVec2(b.x, a.y) + ImVec2(-1, 1));
+    draw_list->PathStroke(top_left_inner, false, 1.0f);
+
+    draw_list->PathLineTo(ImVec2(a.x, b.y) + ImVec2(1, -1));
+    draw_list->PathLineTo(b + ImVec2(-1, -1));
+    draw_list->PathLineTo(ImVec2(b.x, a.y) + ImVec2(-1, 1));
+    draw_list->PathStroke(bottom_right_inner, false, 1.0f);
+}
+
+
 static void ImGui::RenderWindowOuterBorders(ImGuiWindow* window)
 {
     ImGuiContext& g = *GImGui;
     float rounding = window->WindowRounding;
     float border_size = window->WindowBorderSize;
+
+#ifdef WIN98 // window borders
+    if (border_size > 0.0f && !(window->Flags & ImGuiWindowFlags_NoBackground))
+        WinAddRect(window->Pos, window->Pos + window->Size, false);
+#else
     if (border_size > 0.0f && !(window->Flags & ImGuiWindowFlags_NoBackground))
         window->DrawList->AddRect(window->Pos, window->Pos + window->Size, GetColorU32(ImGuiCol_Border), rounding, ImDrawCornerFlags_All, border_size);
 
@@ -5187,6 +5237,7 @@ static void ImGui::RenderWindowOuterBorders(ImGuiWindow* window)
         float y = window->Pos.y + window->TitleBarHeight() - 1;
         window->DrawList->AddLine(ImVec2(window->Pos.x + border_size, y), ImVec2(window->Pos.x + window->Size.x - border_size, y), GetColorU32(ImGuiCol_Border), g.Style.FrameBorderSize);
     }
+#endif
 }
 
 // Draw background and borders
@@ -5294,6 +5345,11 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
     float pad_l = style.FramePadding.x;
     float pad_r = style.FramePadding.x;
     float button_sz = g.FontSize;
+#ifdef WIN98 // draw title bar
+    button_sz = 16.0f;
+    // pad_l = 0.0f;
+    pad_r = 0.0f;
+#endif
     ImVec2 close_button_pos;
     ImVec2 collapse_button_pos;
     if (has_close_button)
@@ -5311,6 +5367,38 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
         collapse_button_pos = ImVec2(title_bar_rect.Min.x + pad_l - style.FramePadding.x, title_bar_rect.Min.y);
         pad_l += button_sz;
     }
+
+#ifdef WIN98 // windows style title bar
+
+    close_button_pos += ImVec2(0.0f, 2.0f);
+    collapse_button_pos += ImVec2(0.0f, 2.0f);
+
+    ImU32 col_left = IM_COL32(128,128,128,255);
+    ImU32 col_right = IM_COL32(181,181,181,255);
+
+    bool focused = IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+    if (focused) {
+
+        // Windows98 colors are (0,0,128), (16,132,208)
+        // This code generates the secondary color from the primary while
+        // keeping the original windows colors
+        col_left = GetColorU32(ImGuiCol_TitleBgActive);
+
+        ImVec4 secondary = GetStyleColorVec4(ImGuiCol_TitleBgActive);
+        ImVec4 secondary_hsv;
+        ColorConvertRGBtoHSV(secondary.x, secondary.y, secondary.z, secondary_hsv.x, secondary_hsv.y, secondary_hsv.z);
+        secondary_hsv.x -= 0.1f;
+        if (secondary_hsv.x < 0.0f) secondary_hsv.x += 1.0f;
+        secondary_hsv.y *= 0.92f;
+        secondary_hsv.z *= 1.625f;
+        ColorConvertHSVtoRGB(secondary_hsv.x, secondary_hsv.y, secondary_hsv.z, secondary.x, secondary.y, secondary.z);
+
+        col_right = ColorConvertFloat4ToU32(secondary);
+    }
+
+
+    window->DrawList->AddRectFilledMultiColor(title_bar_rect.Min, title_bar_rect.Max, col_left, col_right, col_right, col_left);
+#endif
 
     // Collapse button (submitting first so it gets priority when choosing a navigation init fallback)
     if (has_collapse_button)
@@ -5346,6 +5434,14 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
         pad_r = ImMax(pad_r, pad_extend * centerness);
     }
 
+#ifdef WIN98 // windows title font
+    if (focused) PushStyleColor(ImGuiCol_Text, IM_COL32(255,255,255,255));
+    else PushStyleColor(ImGuiCol_Text, IM_COL32(192,192,192,255));
+    ImGuiIO& io = ImGui::GetIO();
+    ImFont* font = io.Fonts->Fonts[1]; // Assume the icon font is here. pretty bad
+    PushFont(font);
+#endif
+
     ImRect layout_r(title_bar_rect.Min.x + pad_l, title_bar_rect.Min.y, title_bar_rect.Max.x - pad_r, title_bar_rect.Max.y);
     ImRect clip_r(layout_r.Min.x, layout_r.Min.y, layout_r.Max.x + g.Style.ItemInnerSpacing.x, layout_r.Max.y);
     //if (g.IO.KeyCtrl) window->DrawList->AddRect(layout_r.Min, layout_r.Max, IM_COL32(255, 128, 0, 255)); // [DEBUG]
@@ -5356,6 +5452,11 @@ void ImGui::RenderWindowTitleBarContents(ImGuiWindow* window, const ImRect& titl
         ImVec2 off = ImVec2(0.0f, IM_FLOOR(-g.FontSize * 0.25f));
         RenderTextClipped(marker_pos + off, layout_r.Max + off, UNSAVED_DOCUMENT_MARKER, NULL, NULL, ImVec2(0, style.WindowTitleAlign.y), &clip_r);
     }
+
+#ifdef WIN98
+    PopFont();
+    PopStyleColor();
+#endif
 }
 
 void ImGui::UpdateWindowParentAndRootLinks(ImGuiWindow* window, ImGuiWindowFlags flags, ImGuiWindow* parent_window)
@@ -5937,8 +6038,16 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
         }
 
         // Title bar
-        if (!(flags & ImGuiWindowFlags_NoTitleBar))
+        if (!(flags & ImGuiWindowFlags_NoTitleBar)) {
+#ifdef WIN98 // title bar sizing
+            ImRect inset_title_rect = title_bar_rect;
+            inset_title_rect.Min += ImVec2(2.0f, 2.0f);
+            inset_title_rect.Max -= ImVec2(2.0f, 0.0f);
+            RenderWindowTitleBarContents(window, inset_title_rect, name, p_open);
+#else
             RenderWindowTitleBarContents(window, title_bar_rect, name, p_open);
+#endif
+        }
 
         // Pressing CTRL+C while holding on a window copy its content to the clipboard
         // This works but 1. doesn't handle multiple Begin/End pairs, 2. recursing into another Begin/End pair - so we need to work that out and add better logging scope.
