@@ -9650,7 +9650,10 @@ static void ShowExampleAppCustomRendering(bool* p_open)
                 draw_list->Flags &= ~ImDrawListFlags_AntiAliasedFill;
 
             // Fill a strip of background
-            draw_list->AddRectFilled(ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y), ImVec2(ImGui::GetCursorScreenPos().x + ImGui::GetWindowContentRegionMax().x, ImGui::GetCursorScreenPos().y + 200.0f), ImGui::GetColorU32(background_color));
+            {
+                ImVec2 p = ImGui::GetCursorScreenPos();
+                draw_list->AddRectFilled(p, ImVec2(p.x + ImGui::GetContentRegionAvail().x, p.y + 200.0f), ImGui::GetColorU32(background_color));
+            }
 
             // Rectangle
             {
